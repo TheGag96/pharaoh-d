@@ -1,5 +1,5 @@
-import BaseAI, Thief, Trap, ThiefType, TrapType, Tile, structures, astar;
-import std.algorithm, std.array, std.stdio, std.typecons, std.random, std.container;
+import BaseAI, Thief, Trap, ThiefType, TrapType, Tile, structures, util;
+import std.algorithm, std.array, std.stdio, std.string, std.typecons, std.random, std.container;
 
 ///The class implementing gameplay logic.
 class AI : BaseAI {
@@ -8,7 +8,7 @@ class AI : BaseAI {
     Tile[] spawnPoints;
     Thief[] myThieves, enemyThieves;
     Trap[] myTraps, enemyTraps;
-    const string messages = ["HAPPY FEET", "WOMBO COMBO", "OHH! OHHHHH!", "WHERE YOU AT??"];
+    const string[] messages = ["HAPPY FEET", "WOMBO COMBO", "OHH! OHHHHH!", "WHERE YOU AT??"];
     int prevEnemyThiefCount = 0;
     
     alias point = Tuple!(int, "x", int, "y");
@@ -23,7 +23,7 @@ class AI : BaseAI {
     override void init() {
       //Find the player that I am
       me = players[playerID()];
-      spawPoints = getSpawnPoints();
+      spawnPoints = getSpawnPoints();
     }
     
     override bool run() {
@@ -49,15 +49,27 @@ class AI : BaseAI {
         //get hype
         trashTalk();
         
-        
+        //be strategic
+        useTraps();
+        moveThieves();
       }
       
       return true;
     }
     
+    alias hallway = Tuple!(int, "x", int, "y", int, "direction");
+    hallway[] hallways;
+    
     void placeTraps() {
       //place sarcophagus
       alias hallway = Tuple!(int, "x", int, "y", int, "direction");
+      hallways = util.getLongestHallways(playerID());
+      foreach (h; hallways) {
+        me.placeTrap(h.x, h.y, TrapType.SARCOPHAGUS);
+        me.placeTrap(h.x+xChange[h.direction], h.y+yChange[h.direction], TrapType.BOULDER);
+        me.placeTrap(h.x+2*xChange[h.direction], h.y+2*yChange[h.direction], TrapType.FAKE_ROTATING_WALL);
+      }
+      
       
       //place other traps
     }
@@ -66,10 +78,26 @@ class AI : BaseAI {
       
     }
     
+    void useTraps() {
+      //use boulders if thieves are too close
+      foreach (h; hallways) {
+        Thief[] nearSarc = getThievesAt(h.x+2*xChange[h.direction], h.y+2*yChange[h.direction]);
+        if (nearSarc.length > 0) {
+          Trap boulder = getTrapAt(h.x+xChange[h.direction], h.y+yChange[h.direction]);
+          boulder.act(xChange[h.direction], yChange[h.direction]);
+        }
+      }
+    }
+    
+    void moveThieves() {
+      
+    }
+    
     void trashTalk() {
       if (roundTurnNumber() > 3 && enemyThieves.length - prevEnemyThiefCount < 0) {
         foreach (thief; myThieves) {
-          thief.thiefTalk(messages[uniform(0,messages.length)]);
+          //thief.thiefTalk(messages[uniform(0,messages.length)]);
+          writeln(messages[uniform(0,messages.length)]);
         }
       }
     }
@@ -146,7 +174,7 @@ class AI : BaseAI {
         return null;
       }
       
-      foreach (trap; traps) {f
+      foreach (trap; traps) {
         if (trap.getX() == x && trap.getY() == y) {
           return trap;
         }
@@ -189,11 +217,38 @@ class AI : BaseAI {
     }
     
     bool purchaseThief(Player player, point p, int thiefType) {
-      me.purchaseThief(p.x, p.y, thiefType);
+      return player.purchaseThief(p.x, p.y, thiefType);
     }
     
-    bool placeTrap(Player me, point p, int thiefType) {
-      me.placeTrap(p.x, p.y, thiefType);
+    bool placeTrap(Player player, point p, int thiefType) {
+      return player.placeTrap(p.x, p.y, thiefType);
+    }
+    
+    Trap getTrapAt(int x, int y) {
+      foreach (trap; traps) {
+        if (trap.getX() == x && trap.getY() == y) {
+          return trap;
+        }
+      }
+      return null;
+    }
+    
+    Thief[] getThievesAt(point p) {
+      return getThievesAt(p.x, p.y);
+    }
+    
+    Thief[] getThievesAt(int x, int y) {
+      Thief[] result = [];
+      foreach (thief; thieves) {
+        if (thief.getX() == x && thief.getY() == y) {
+          result ~= thief;
+        }
+      }
+      return result;
+    }
+    
+    Trap getTrapAt(point p) {
+      return getTrapAt(p.x, p.y);
     }
 
     //This function is called once, after your last turn
