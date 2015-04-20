@@ -1,4 +1,4 @@
-import std.stdio, std.array, std.container, std.algorithm, std.typecons, core.exception, std.math, std.conv;
+import std.stdio, std.array, std.container, std.algorithm, std.typecons, core.exception, std.math, std.conv, std.random;
 import BaseAI, Tile;
 
 alias point = Tuple!(int, "x", int, "y");
@@ -90,6 +90,10 @@ bool isWall(point p, ref int[][] grid) {
   return (grid[p.x][p.y] == Tile.WALL);
 }
 
+bool isEmpty(point p, ref int[][] grid) {
+  return (grid[p.x][p.y] == Tile.EMPTY);
+}
+
 int manhattanDistance(point a, point b) {
   return abs(b.x-a.x) + abs(b.y-a.y);
 }
@@ -103,7 +107,7 @@ int pointCompare(point a, point b, point start, point end) {
 //Hallway Detection
 ////
 
-alias hallway = Tuple!(int, "x", int, "y", int, "direction");
+alias hallway = Tuple!(int, "x", int, "y", int, "direction", int, "length");
 
 hallway[] getLongestHallways(int playerID) {
   hallway[] hallways = [];
@@ -125,39 +129,102 @@ hallway[] getLongestHallways(int playerID) {
         }
       }
       if (neighbors == 3) {
-        hallways ~= hallway(x, y, direction);
+        hallways ~= hallway(x, y, direction, 0);
       }
     }
   }
 
-  hallways.sort!((a,b) => a.getLength(grid) > b.getLength(grid));
+  hallways.getLengths(grid);
+  hallways.sort!((a,b) => a.length > b.length);
   
-  return hallways[0..4];
+  return hallways[0..3];
 }
 
-int getLength(hallway h, ref int[][] grid) {
-  int length = 0;
-  int x = h.x, y = h.y;
-  const int[] perpX = [0, 0, 1, 1];
-  const int[] perpY = [1, 1, 0, 0];
-  bool endFound = false;
-  while (!endFound) {
-    length++;
-    point adjacent1 = point(x+perpX[h.direction], y+perpY[h.direction]);
-    point adjacent2 = point(x-perpX[h.direction], y-perpY[h.direction]);
-    
-    if (inBounds(adjacent1) && !isWall(adjacent1, grid)) {
-      endFound = true;
-      break;
+void getLengths(ref hallway[] hallways, ref int[][] grid) {
+  foreach (ref hallway h; hallways) {
+    int length = 0;
+    int x = h.x, y = h.y;
+    const int[] perpX = [0, 0, 1, 1];
+    const int[] perpY = [1, 1, 0, 0];
+    bool endFound = false;
+    while (!endFound) {
+      length++;
+      point adjacent1 = point(x+perpX[h.direction], y+perpY[h.direction]);
+      point adjacent2 = point(x-perpX[h.direction], y-perpY[h.direction]);
+      
+      if (inBounds(adjacent1) && !isWall(adjacent1, grid)) {
+        endFound = true;
+        break;
+      }
+      if (inBounds(adjacent2) && !isWall(adjacent2, grid)) {
+        endFound = true;
+        break;
+      }
+      
+      x += xChange[h.direction];
+      y += yChange[h.direction];
+      if (!inBounds(point(x, y))) break;
     }
-    if (inBounds(adjacent2) && !isWall(adjacent2, grid)) {
-      endFound = true;
-      break;
-    }
-    
-    x += xChange[h.direction];
-    y += yChange[h.direction];
-    if (!inBounds(point(x, y))) break;
+    h.length = length;
   }
-  return length;
+}
+
+////
+//Two-Wall Neighbor Detection
+////
+
+point[] getTwoNeighborTiles(int playerID) {
+  point[] result = [];
+  int[][] grid = buildGrid();
+  
+  int minX = playerID*mapHeight;
+  
+  foreach (x; minX+1..minX+24) {
+    foreach (y; 1..mapHeight-1) {
+      point candidate = point(x,y);
+      if (grid[candidate.x][candidate.y] == Tile.EMPTY && getNeighborWallCount(candidate, grid) == 2) {
+        result ~= candidate;
+      }
+    }
+  }
+  
+  return result;
+}
+
+int getNeighborWallCount(point p, ref int[][] grid) {
+  int neighbors = 0;
+  foreach (a; 0..4) {
+    point n = point(p.x+xChange[a], p.y+yChange[a]);
+    if (inBounds(n) && grid[n.x][n.y] == Tile.WALL) {
+      neighbors++;
+    }
+  }
+  return neighbors;
+}
+
+point getRandomEmptyTile(int playerID, ref int[][] grid) {
+  int randomX = uniform(1, 24) + playerID*25;
+  int randomY = uniform(1, 24);
+  
+  while (grid[randomX][randomY] != 0) {
+    randomX = uniform(1, 24) + playerID*25;
+    randomY = uniform(1, 24);
+  }
+  
+  return point(randomX, randomY);
+}
+
+////
+//Other Side of Sarcophagus
+////
+point getWallOver(point p, ref int[][] grid, int playerID) {
+  foreach (a; 0..4) {
+    point wallOver = point(p.x+2*xChange[a], p.y+2*yChange[a]);
+    if (wallOver.x >= 1+25*(1-playerID) && wallOver.x <= 23+25*(1-playerID) && wallOver.y >= 1 && wallOver.y <= 23) {
+      if (isEmpty(wallOver, grid) && isWall(point(p.x+xChange[a], p.y+yChange[a]), grid)) { 
+        return wallOver;
+      }
+    }
+  }
+  return point(-1,-1);
 }
